@@ -1,79 +1,140 @@
 # Atlas Commerce
 
-A production-minded e-commerce demo built to show how I structure safe changes in an existing commerce codebase.
+[![CI](https://github.com/soufianeelseflo/atlas-commerce/actions/workflows/ci.yml/badge.svg)](https://github.com/soufianeelseflo/atlas-commerce/actions/workflows/ci.yml)
+![Next.js](https://img.shields.io/badge/Next.js-16.3-black?logo=nextdotjs)
+![React](https://img.shields.io/badge/React-19.2-20232a?logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-7.0-3178c6?logo=typescript&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind_CSS-4.3-06b6d4?logo=tailwindcss&logoColor=white)
 
-**Stack:** Next.js 16.3.3 · React 19.2.8 · TypeScript 5.9.3 · Tailwind CSS 4.3
+**A production-oriented commerce case study: customer storefront, checkout flow, order operations and inventory risk in one typed Next.js application.**
 
-> This is a technical demo, not a client project. Product/order data is seeded and the admin mutation endpoint uses an in-memory demo store.
+Atlas Commerce is a public engineering sample I built to demonstrate how I approach an existing commerce product: keep customer-facing changes polished, keep business state explicit, and make operational mutations small, validated and reversible.
 
-## What it demonstrates
+> **Scope note:** the product and order records are seeded so the repository can run without external infrastructure. The architecture deliberately isolates those demo adapters so they can be replaced by a real database, commerce backend, auth provider and payment flow without rewriting every screen.
 
-- App Router with server-first pages and small client islands
-- Typed domain models for products, orders, stock and statuses
-- Storefront with product search, category filters and product detail pages
-- Persistent cart using localStorage
-- Checkout simulation with validation and clear user states
-- Commerce operations dashboard with revenue/order/stock KPIs
-- Order management with optimistic status updates and rollback on API failure
-- Inventory views with low-stock risk surfacing
-- Route handlers (`GET` / `PATCH`) behind a small service boundary
-- Runtime payload validation without pulling in unnecessary dependencies
-- Loading, not-found and error states
-- Responsive UI and keyboard-visible focus states
-- CI workflow that runs type checking and a production build
+## Review it in five minutes
 
-## Local run
+| What to inspect | Route | What it demonstrates |
+| --- | --- | --- |
+| Customer storefront | `/` → `/shop` | Responsive merchandising, search/filtering, product states |
+| Product → cart flow | `/product/[slug]` → `/cart` | Focused client state, persistence, checkout validation |
+| Commerce overview | `/admin` | Revenue/order/inventory KPIs from shared typed data |
+| Order operations | `/admin/orders` | Optimistic status changes + API validation + rollback |
+| Inventory risk | `/admin/inventory` | Low-stock/sold-out visibility using the storefront product model |
+| API boundary | `/api/products`, `/api/orders` | Typed route handlers and runtime payload validation |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A[Storefront pages\nServer rendered] --> D[Typed commerce domain]
+  B[Cart + mutation controls\nClient islands] --> D
+  C[Admin operations\nOrders + inventory] --> D
+  D --> P[Product adapter]
+  D --> O[Order service]
+  O --> API[Next.js route handlers]
+  API --> V[Runtime validation]
+  V --> S[Demo persistence adapter]
+```
+
+The important boundary is the **typed commerce domain**, not the seeded data. UI code consumes products/orders through predictable types and helpers instead of scattering business-state assumptions across components.
+
+## Engineering decisions worth reviewing
+
+### 1. Server-first rendering
+
+Catalog and product detail pages are rendered from server data. Browser state is kept to narrow client islands where it actually improves the experience: cart persistence and interactive mutation controls.
+
+### 2. Optimistic UX without trusting the browser
+
+Order status changes follow a reversible flow:
+
+1. Check the transition locally for immediate feedback.
+2. Update the row optimistically.
+3. Send a `PATCH` to `/api/orders/:id`.
+4. Validate the requested transition at the API boundary.
+5. Restore the previous state when the request fails.
+
+This keeps the interface fast while preserving an authoritative write boundary.
+
+### 3. One domain powers customer and operations views
+
+The storefront, order dashboard and inventory view use the same typed sources. That reduces the drift that happens when an admin interface reimplements product/order semantics independently.
+
+### 4. Small dependency surface
+
+The interface uses React + Tailwind directly instead of pulling in a large UI framework. That makes the project easier to audit, change and embed into an existing production codebase.
+
+### 5. CI as a merge gate
+
+`.github/workflows/ci.yml` runs type checking and a production Next.js build. The goal is simple: presentation work should not be able to silently break the deployable application.
+
+## Product surface
+
+- Responsive storefront and product cards
+- Search and category filtering
+- Product detail pages with stock-aware states
+- Persistent cart using `localStorage`
+- Checkout simulation with validation and explicit states
+- Commerce overview with revenue, open-order and stock-risk KPIs
+- Order operations table
+- Optimistic fulfilment mutations with rollback
+- Inventory risk view
+- Loading, error and not-found states
+- Keyboard-visible focus styles
+- Typed REST-style route handlers
+
+## Production integration map
+
+| Public case-study adapter | Production replacement |
+| --- | --- |
+| Seeded product/order records | PostgreSQL, ERP or existing commerce backend |
+| In-memory mutation store | Transactional persistence/service layer |
+| Demo checkout | Existing card/COD/payment provider |
+| Open admin routes | Authentication + RBAC |
+| Static product artwork | CDN / DAM / existing media pipeline |
+| Basic event hooks | Existing analytics + observability |
+
+The UI and domain boundaries are intentionally structured so those integrations can be swapped behind stable interfaces.
+
+## Code map
+
+```text
+app/
+├── page.tsx                 # product-facing case-study landing
+├── shop/                    # searchable catalog
+├── product/[slug]/          # product detail
+├── cart/                    # persistent cart + checkout simulation
+├── admin/                   # commerce operations workspace
+└── api/                     # typed route handlers
+components/
+├── storefront/              # customer-facing interactive components
+└── admin/                   # order/inventory operational controls
+lib/
+├── data.ts                  # seeded adapters
+├── orders-store.ts          # order mutation boundary
+├── types.ts                 # shared commerce domain
+└── format.ts                # presentation helpers
+```
+
+## Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Then open `http://localhost:3000`.
 
-Useful routes:
+Quality gates:
 
-- `/` storefront
-- `/shop` searchable catalog
-- `/cart` cart + demo checkout
-- `/admin` commerce overview
-- `/admin/orders` order operations
-- `/admin/inventory` inventory risk view
-- `/api/products`
-- `/api/orders`
-
-## Production-safety choices
-
-This repo intentionally keeps business state behind typed helpers instead of editing UI state ad hoc.
-
-For example, order status changes:
-
-1. Validate the transition client-side.
-2. Update the row optimistically for fast feedback.
-3. Send a `PATCH` to `/api/orders/:id`.
-4. Roll back to the previous state if the API fails.
-
-That pattern is useful when working on an existing e-commerce product because UI changes remain local, reversible, and testable.
-
-## What I would replace in a real client project
-
-- Seeded products/orders → PostgreSQL / existing commerce backend
-- In-memory order mutation → transactional persistence
-- Demo checkout → existing payment/COD workflow
-- Demo admin access → authentication + RBAC
-- Static product art → CDN / existing media pipeline
-- Basic event calls → existing analytics/observability
-
-The UI components and domain boundaries are structured so those integrations can be swapped without rewriting every page.
-
-## Dependency policy
-
-The project intentionally avoids a large component-library/dependency surface. That reduces upgrade risk and makes the code easier to audit inside an existing production application.
-
-Tailwind uses the current v4 PostCSS setup:
-
-```css
-@import "tailwindcss";
+```bash
+npm run typecheck
+npm run build
 ```
 
-No Tailwind v3 config boilerplate or deprecated `@tailwind base/components/utilities` setup is used.
+## About this repository
+
+This is a **public engineering case study**, not a claim of client ownership or production traffic. The code, UI, architecture and trade-offs are here so they can be inspected directly.
+
+Built by **Soufiane** — React / Next.js / TypeScript product engineering, e-commerce workflows, APIs and operational tooling.
